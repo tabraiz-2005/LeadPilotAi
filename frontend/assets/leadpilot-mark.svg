@@ -1,0 +1,22 @@
+<svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="20" y1="12" x2="142" y2="150" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#818CF8"/>
+      <stop offset="0.55" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="80" y1="35" x2="80" y2="126" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#BFDBFE"/>
+    </linearGradient>
+    <filter id="shadow" x="-20" y="-20" width="200" height="200" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#1D4ED8" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect x="12" y="12" width="136" height="136" rx="38" fill="url(#bg)" filter="url(#shadow)"/>
+  <circle cx="80" cy="80" r="43" stroke="white" stroke-opacity="0.22" stroke-width="2"/>
+  <circle cx="80" cy="80" r="29" stroke="white" stroke-opacity="0.34" stroke-width="2"/>
+  <path d="M80 31L105 104L80 92L55 104L80 31Z" fill="url(#beam)"/>
+  <circle cx="80" cy="80" r="7" fill="#07111F" stroke="white" stroke-width="3"/>
+  <path d="M36 80H47M113 80H124M80 36V47M80 113V124" stroke="white" stroke-opacity="0.72" stroke-width="4" stroke-linecap="round"/>
+</svg>

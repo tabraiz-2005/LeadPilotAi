@@ -1,0 +1,10 @@
+**/.env
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+*.pyc
+*.db
+backend/data/chroma/
+backend/data/portfolio_uploads/*
+!backend/data/portfolio_uploads/.gitkeep
