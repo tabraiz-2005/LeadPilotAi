@@ -21,6 +21,7 @@ from pathlib import Path
 import requests
 import streamlit as st
 from dotenv import load_dotenv
+from embedded_backend import ensure_backend
 
 # ---------------------------------------------------------------------------
 # Config
@@ -31,6 +32,8 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 REQUEST_TIMEOUT = 90  # AI research + scoring + two outreach drafts can take time
 
 st.set_page_config(page_title="LeadPilot AI", page_icon="🧭", layout="wide")
+
+ensure_backend()
 
 LOGO_PATH = Path(__file__).resolve().parent / "assets" / "leadpilot-mark.svg"
 LOGO_URI = "data:image/svg+xml;base64," + base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
