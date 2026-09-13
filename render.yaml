@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: leadpilot-ai
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: DATABASE_URL
+        value: sqlite:////tmp/leadpilot.db
+      - key: CHROMA_PERSIST_DIR
+        value: /tmp/leadpilot-chroma
+      - key: ENABLE_WEB_ENRICHMENT
+        value: "true"
+      - key: ALLOW_ORIGINS
+        value: "*"

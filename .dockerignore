@@ -1,0 +1,11 @@
+.git/
+.github/
+**/.env
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+*.py[cod]
+*.db
+backend/data/chroma/
+backend/data/portfolio_uploads/
