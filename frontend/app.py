@@ -466,8 +466,18 @@ def page_header(kicker: str, title: str, subtitle: str):
 # ---------------------------------------------------------------------------
 if "selected_lead_id" not in st.session_state:
     st.session_state.selected_lead_id = None
+
 if "page" not in st.session_state:
     st.session_state.page = "Overview"
+
+if "nav_page" not in st.session_state:
+    st.session_state.nav_page = st.session_state.page
+
+
+def navigate_to(page_name: str):
+    """Request navigation before sidebar widgets load on the next rerun."""
+    st.session_state["_next_page"] = page_name
+    st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -497,6 +507,21 @@ def api_get(path: str, params: dict | None = None):
         resp = requests.get(f"{BACKEND_URL}{path}", params=params, timeout=REQUEST_TIMEOUT)
     except requests.exceptions.RequestException as e:
         raise ApiError(f"Could not reach backend at {BACKEND_URL}. Is it running? ({e})")
+    return _handle_response(resp)
+
+
+
+def api_delete(path: str):
+    try:
+        resp = requests.delete(
+            f"{BACKEND_URL}{path}",
+            timeout=REQUEST_TIMEOUT,
+        )
+    except requests.exceptions.RequestException as e:
+        raise ApiError(
+            f"Could not reach backend at {BACKEND_URL}. Is it running? ({e})"
+        )
+
     return _handle_response(resp)
 
 
@@ -637,9 +662,11 @@ def page_upload_leads():
                             f"{len(failed)} lead(s) could not be analyzed automatically. "
                             "Open them from the dashboard and select Analyze this lead to retry."
                         )
-                    st.session_state.page = "Lead Dashboard"
-                    if st.button("Open Lead Dashboard →", type="primary"):
-                        st.rerun()
+                    st.session_state["dashboard_notice"] = (
+                        f"Uploaded {len(lead_ids)} lead(s). "
+                        f"AI analysis completed for {generated} lead(s)."
+                    )
+                    navigate_to("Lead Dashboard")
             except ApiError as e:
                 st.error(
                     "⚠️ Upload failed: "
@@ -664,8 +691,60 @@ def page_lead_dashboard():
         "See every prospect in one place, compare fit, and open the strongest opportunities first."
     )
 
-    if st.button("🔄 Refresh"):
-        st.rerun()
+    dashboard_notice = st.session_state.pop(
+        "dashboard_notice",
+        None,
+    )
+    if dashboard_notice:
+        st.success(dashboard_notice)
+
+    refresh_col, clear_col, dashboard_space = st.columns([1.2, 1.7, 5])
+
+    with refresh_col:
+        if st.button(
+            "🔄 Refresh",
+            key="refresh_dashboard",
+            use_container_width=True,
+        ):
+            st.rerun()
+
+    with clear_col:
+        with st.popover(
+            "🗑️ Clear Dashboard",
+            use_container_width=True,
+        ):
+            st.warning(
+                "This removes every lead, AI analysis, outreach draft "
+                "and approval decision."
+            )
+
+            confirm_clear = st.checkbox(
+                "I understand",
+                key="confirm_clear_dashboard",
+            )
+
+            if st.button(
+                "Clear All Leads",
+                type="primary",
+                disabled=not confirm_clear,
+                use_container_width=True,
+                key="clear_all_leads",
+            ):
+                try:
+                    result = api_delete("/leads/")
+                    deleted = (result or {}).get("deleted_leads", 0)
+
+                    st.session_state.selected_lead_id = None
+                    st.session_state["dashboard_notice"] = (
+                        f"Dashboard cleared. {deleted} lead(s) removed."
+                    )
+                    st.session_state.pop(
+                        "confirm_clear_dashboard",
+                        None,
+                    )
+                    navigate_to("Lead Dashboard")
+                except ApiError as e:
+                    st.error(f"Could not clear dashboard: {e}")
 
     with st.spinner("Loading leads..."):
         try:
@@ -703,8 +782,7 @@ def page_lead_dashboard():
             cols[3].write((lead.get("status") or "pending").title())
             if cols[4].button("View Details →", key=f"view_{lead['id']}", type="primary", use_container_width=True):
                 st.session_state.selected_lead_id = lead["id"]
-                st.session_state.page = "Lead Detail & Approval"
-                st.rerun()
+                navigate_to("Lead Detail & Approval")
 
 
 # ---------------------------------------------------------------------------
@@ -893,14 +971,28 @@ def main():
         "Lead Detail & Approval": page_lead_detail,
     }
 
-    choice = st.sidebar.radio(
+    if "_next_page" in st.session_state:
+        requested_page = st.session_state.pop("_next_page")
+
+        if requested_page in pages:
+            st.session_state.page = requested_page
+            st.session_state.nav_page = requested_page
+
+    if st.session_state.page not in pages:
+        st.session_state.page = "Overview"
+        st.session_state.nav_page = "Overview"
+
+    def sync_sidebar_navigation():
+        st.session_state.page = st.session_state.nav_page
+
+    st.sidebar.radio(
         "Navigate",
         list(pages.keys()),
-        index=list(pages.keys()).index(st.session_state.page),
+        key="nav_page",
+        on_change=sync_sidebar_navigation,
     )
-    st.session_state.page = choice
 
-    pages[choice]()
+    pages[st.session_state.page]()
 
 
 if __name__ == "__main__":

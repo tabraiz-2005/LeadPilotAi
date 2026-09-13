@@ -8,7 +8,7 @@ from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
-from app.models import Lead, OutreachDraft, PortfolioItem
+from app.models import Lead, OutreachDraft, PortfolioItem, Approval
 from app.schemas import LeadOut, LeadUploadResult, OutreachDraftOut
 from app.agents import run_research_agent, run_fit_scorer_agent, run_outreach_agent
 from app.services.rag_service import query_portfolio, format_evidence_for_agent
@@ -63,6 +63,25 @@ def upload_leads(file: UploadFile = File(...), db: Session = Depends(get_db)):
 @router.get("/", response_model=list[LeadOut])
 def list_leads(db: Session = Depends(get_db)):
     return db.query(Lead).order_by(Lead.created_at.desc()).all()
+
+
+
+@router.delete("/")
+def clear_all_leads(db: Session = Depends(get_db)):
+    """Delete all leads and their related drafts and decisions."""
+
+    approval_count = db.query(Approval).delete(synchronize_session=False)
+    draft_count = db.query(OutreachDraft).delete(synchronize_session=False)
+    lead_count = db.query(Lead).delete(synchronize_session=False)
+
+    db.commit()
+
+    return {
+        "status": "cleared",
+        "deleted_leads": lead_count,
+        "deleted_drafts": draft_count,
+        "deleted_approvals": approval_count,
+    }
 
 
 @router.get("/{lead_id}", response_model=LeadOut)
