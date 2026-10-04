@@ -59,8 +59,7 @@ def run_fit_scorer_agent(
 
     Returns:
         A validated FitScoreOutput. If the model fails to produce valid
-        JSON after one retry, a schema-valid fallback is returned instead
-        of raising.
+        JSON after one retry, a visible workflow error is raised.
     """
     if isinstance(research_output, ResearchOutput):
         research_output = research_output.model_dump()

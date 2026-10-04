@@ -1,0 +1,20 @@
+DEMO PORTFOLIO — FICTIONAL DATA FOR TESTING
+Jordan Rivera | Rivera Studio
+
+Project: SaaS Customer Onboarding
+Built SaaS onboarding with FastAPI.
+Created signup forms, welcome emails and an onboarding dashboard.
+Services: Python development, API integration, onboarding automation.
+
+Project: E-commerce Website
+Built a Shopify store with product filtering and mobile-friendly pages.
+Configured product catalogs and automated order confirmation emails.
+Services: Shopify development, website design, e-commerce automation.
+
+Project: Lead Management
+Built a lead tracking dashboard with automated follow-up reminders.
+Connected website inquiry forms to a CRM.
+Services: CRM integration, lead management, workflow automation.
+
+These are demonstration projects. No revenue increases, conversion
+improvements or other quantified results are claimed.

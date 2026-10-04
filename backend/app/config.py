@@ -13,13 +13,16 @@ from dotenv import load_dotenv
 # Always load backend/.env, even when uvicorn is started from the project root.
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 ENV_FILE = BACKEND_DIR / ".env"
-load_dotenv(dotenv_path=ENV_FILE, override=True)
+load_dotenv(dotenv_path=ENV_FILE, override=False)
 
 
 class Settings:
     # Groq LLM settings
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "").strip().strip('"').strip("'")
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+
+    SENDER_NAME: str = os.getenv("SENDER_NAME", "").strip()
+    SENDER_COMPANY: str = os.getenv("SENDER_COMPANY", "").strip()
 
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./leadpilot.db")

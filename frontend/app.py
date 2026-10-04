@@ -15,6 +15,8 @@ Config:
 """
 
 import os
+import time
+import html
 import io
 import base64
 from pathlib import Path
@@ -27,16 +29,20 @@ from embedded_backend import ensure_backend
 # Config
 # ---------------------------------------------------------------------------
 load_dotenv()  # allows a local .env file with BACKEND_URL=... during dev
+# Also read backend/.env so SENDER_NAME / SENDER_COMPANY pre-fill the sidebar.
+load_dotenv(Path(__file__).resolve().parents[1] / "backend" / ".env", override=False)
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 REQUEST_TIMEOUT = 90  # AI research + scoring + two outreach drafts can take time
 
 st.set_page_config(page_title="LeadPilot AI", page_icon="🧭", layout="wide")
 
-ensure_backend()
+if not os.getenv("BACKEND_URL"):
+    ensure_backend()
 
 LOGO_PATH = Path(__file__).resolve().parent / "assets" / "leadpilot-mark.svg"
-LOGO_URI = "data:image/svg+xml;base64," + base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
+LOGO_URI = "data:image/svg+xml;base64," + \
+    base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
 
 # ---------------------------------------------------------------------------
 # Visual system — navy + white, intentionally leaving the product flow intact
@@ -461,6 +467,7 @@ def page_header(kicker: str, title: str, subtitle: str):
         unsafe_allow_html=True,
     )
 
+
 # ---------------------------------------------------------------------------
 # Session state defaults
 # ---------------------------------------------------------------------------
@@ -504,11 +511,12 @@ def _handle_response(resp: requests.Response):
 
 def api_get(path: str, params: dict | None = None):
     try:
-        resp = requests.get(f"{BACKEND_URL}{path}", params=params, timeout=REQUEST_TIMEOUT)
+        resp = requests.get(f"{BACKEND_URL}{path}",
+                            params=params, timeout=REQUEST_TIMEOUT)
     except requests.exceptions.RequestException as e:
-        raise ApiError(f"Could not reach backend at {BACKEND_URL}. Is it running? ({e})")
+        raise ApiError(
+            f"Could not reach backend at {BACKEND_URL}. Is it running? ({e})")
     return _handle_response(resp)
-
 
 
 def api_delete(path: str):
@@ -527,17 +535,21 @@ def api_delete(path: str):
 
 def api_post_json(path: str, payload: dict):
     try:
-        resp = requests.post(f"{BACKEND_URL}{path}", json=payload, timeout=REQUEST_TIMEOUT)
+        resp = requests.post(f"{BACKEND_URL}{path}",
+                             json=payload, timeout=REQUEST_TIMEOUT)
     except requests.exceptions.RequestException as e:
-        raise ApiError(f"Could not reach backend at {BACKEND_URL}. Is it running? ({e})")
+        raise ApiError(
+            f"Could not reach backend at {BACKEND_URL}. Is it running? ({e})")
     return _handle_response(resp)
 
 
 def api_post_files(path: str, files: list[tuple[str, tuple[str, bytes, str]]]):
     try:
-        resp = requests.post(f"{BACKEND_URL}{path}", files=files, timeout=REQUEST_TIMEOUT)
+        resp = requests.post(f"{BACKEND_URL}{path}",
+                             files=files, timeout=REQUEST_TIMEOUT)
     except requests.exceptions.RequestException as e:
-        raise ApiError(f"Could not reach backend at {BACKEND_URL}. Is it running? ({e})")
+        raise ApiError(
+            f"Could not reach backend at {BACKEND_URL}. Is it running? ({e})")
     return _handle_response(resp)
 
 
@@ -575,8 +587,10 @@ def page_overview():
     metrics = st.columns(4)
     metrics[0].metric("Portfolio files", len(portfolio))
     metrics[1].metric("Total leads", len(leads))
-    metrics[2].metric("Analyzed", sum(1 for lead in leads if lead.get("status") != "pending"))
-    metrics[3].metric("High fit", sum(1 for lead in leads if lead.get("fit_score") == "High"))
+    metrics[2].metric("Analyzed", sum(1 for lead in leads if lead.get(
+        "status") in ("analyzed", "approved", "rejected", "needs_review")))
+    metrics[3].metric("High fit", sum(
+        1 for lead in leads if lead.get("fit_score") == "High"))
 
 
 # ---------------------------------------------------------------------------
@@ -599,12 +613,15 @@ def page_upload_portfolio():
         with st.spinner("Uploading and processing your portfolio..."):
             try:
                 files_payload = [
-                    ("files", (f.name, f.getvalue(), f.type or "application/octet-stream"))
+                    ("files", (f.name, f.getvalue(),
+                     f.type or "application/octet-stream"))
                     for f in uploaded_files
                 ]
                 result = api_post_files("/portfolio/upload", files_payload)
-                count = (result or {}).get("ingested_count", len(uploaded_files))
-                st.success(f"✅ Success! {count} portfolio item(s) were ingested.")
+                count = (result or {}).get(
+                    "ingested_count", len(uploaded_files))
+                st.success(
+                    f"✅ Success! {count} portfolio item(s) were ingested.")
             except ApiError as e:
                 st.error(f"⚠️ Upload failed: {e}")
 
@@ -635,12 +652,14 @@ def page_upload_leads():
     if st.button("Upload Leads", type="primary", disabled=uploaded_csv is None):
         with st.spinner("Uploading leads..."):
             try:
-                files_payload = [("file", (uploaded_csv.name, uploaded_csv.getvalue(), "text/csv"))]
+                files_payload = [
+                    ("file", (uploaded_csv.name, uploaded_csv.getvalue(), "text/csv"))]
                 result = api_post_files("/leads/upload", files_payload)
                 lead_ids = (result or {}).get("lead_ids", [])
                 st.success(f"✅ Uploaded {len(lead_ids)} lead(s).")
                 if lead_ids:
-                    progress = st.progress(0, text="Starting automatic AI analysis...")
+                    progress = st.progress(
+                        0, text="Starting automatic AI analysis...")
                     generated = 0
                     failed = []
                     for index, lead_id in enumerate(lead_ids, start=1):
@@ -649,14 +668,15 @@ def page_upload_leads():
                             text=f"Generating research, fit score, email and LinkedIn draft for lead {index} of {len(lead_ids)}...",
                         )
                         try:
-                            api_post_json(f"/leads/{lead_id}/analyze", {})
+                            run_analysis(lead_id)
                             generated += 1
                         except ApiError:
                             failed.append(lead_id)
                         progress.progress(index / len(lead_ids))
                     progress.empty()
                     if generated:
-                        st.success(f"✨ AI analysis and outreach drafts generated for {generated} lead(s).")
+                        st.success(
+                            f"✨ AI analysis and outreach drafts generated for {generated} lead(s).")
                     if failed:
                         st.warning(
                             f"{len(failed)} lead(s) could not be analyzed automatically. "
@@ -758,8 +778,10 @@ def page_lead_dashboard():
         return
 
     high_count = sum(1 for lead in leads if lead.get("fit_score") == "High")
-    analyzed_count = sum(1 for lead in leads if lead.get("status") != "pending")
-    approved_count = sum(1 for lead in leads if lead.get("status") == "approved")
+    analyzed_count = sum(1 for lead in leads if lead.get("status") in (
+        "analyzed", "approved", "rejected", "needs_review"))
+    approved_count = sum(
+        1 for lead in leads if lead.get("status") == "approved")
     metrics = st.columns(4)
     metrics[0].metric("Total Leads", len(leads))
     metrics[1].metric("High Fit", high_count)
@@ -788,6 +810,74 @@ def page_lead_dashboard():
 # ---------------------------------------------------------------------------
 # Page: Lead Detail & Approval
 # ---------------------------------------------------------------------------
+def render_trace(run):
+    st.subheader("Agent execution trace")
+    st.caption(
+        f"Run {run['id'][:8]} · {run['status'].replace('_', ' ').title()}")
+    if run.get('current_agent'):
+        st.info(f"Currently executing: {run['current_agent']}")
+    icons = {'pending': '○', 'running': '◉', 'completed': '✓', 'failed': '✕'}
+    for step in run.get('steps', []):
+        with st.expander(f"{icons.get(step['status'], '○')} {step['agent']} · {step['status']}"
+                         + (f" · attempt {step['attempt']}" if step.get('attempt', 0) > 1 else ''),
+                         expanded=step['status'] in ('running', 'failed')):
+            st.write(step.get('output') or 'Waiting for the supervisor.')
+    for item in run.get('evidence', []):
+        with st.expander(f"{item['id']} · {item['title']}"):
+            st.write(item['document'])
+    report = run.get('report', {})
+    if report.get('fit_score'):
+        st.write(
+            f"**Final fit: {report['fit_score']}** — {report.get('fit_reason', '')}")
+    validation = run.get('validation') or {}
+    if validation:
+        if validation.get('passed'):
+            st.success('Message validation passed. Ready for human review.')
+        else:
+            st.warning('Validation has not passed. Approval is blocked.')
+        with st.expander('Validation checks and rewrite history'):
+            for attempt in validation.get('attempts', []):
+                st.write(f"Attempt {attempt['attempt']}")
+                for check, passed in attempt.get('checks', {}).items():
+                    st.write(
+                        f"{'✓' if passed else '✕'} {check.replace('_', ' ').title()}")
+                for issue in attempt.get('issues', []):
+                    st.write(issue)
+    if run.get('error'):
+        st.error(run['error'])
+    if report.get('summary'):
+        st.write(report['summary'])
+
+
+def run_analysis(lead_id, existing_run=None):
+    run = existing_run or api_post_json(f"/leads/{lead_id}/analyze", {
+        'sender_name': st.session_state.get('sender_name', ''),
+        'sender_company': st.session_state.get('sender_company', ''),
+    })
+    panel = st.empty()
+    deadline = time.monotonic() + 900
+    while True:
+        with panel.container():
+            render_trace(run)
+        if run['status'] not in ('pending', 'running'):
+            if run['status'] == 'needs_review':
+                # Drafts exist but failed validation: let the user fix them manually.
+                for prefix in ('email', 'linkedin'):
+                    st.session_state.pop(f'{prefix}_{lead_id}', None)
+                return run
+            if run['status'] != 'completed':
+                raise ApiError(run.get('error') or run.get(
+                    'report', {}).get('summary', 'Analysis needs review.'))
+            for prefix in ('email', 'linkedin'):
+                st.session_state.pop(f'{prefix}_{lead_id}', None)
+            return run
+        if time.monotonic() > deadline:
+            raise ApiError(
+                'Analysis is still running. Reopen this lead to resume watching progress.')
+        time.sleep(1)
+        run = api_get(f"/leads/{lead_id}/runs/{run['id']}")
+
+
 def page_lead_detail():
     page_header(
         "Step 4 · Human decision", "Lead Intelligence & Approval",
@@ -796,7 +886,8 @@ def page_lead_detail():
 
     lead_id = st.session_state.selected_lead_id
     if lead_id is None:
-        st.info("No lead selected. Go to **Lead Dashboard** and click 'View Details' on a lead.")
+        st.info(
+            "No lead selected. Go to **Lead Dashboard** and click 'View Details' on a lead.")
         return
 
     with st.spinner("Loading lead details..."):
@@ -817,12 +908,23 @@ def page_lead_detail():
     contact_name = lead.get("contact_name") or "No contact provided"
     st.markdown(
         f"""<div class="lp-lead-hero">
-        <div><div class="lp-company">{company_name}</div>
-        <div class="lp-meta">{industry} &nbsp;•&nbsp; {website} &nbsp;•&nbsp; {contact_name}</div></div>
+        <div><div class="lp-company">{html.escape(company_name)}</div>
+        <div class="lp-meta">{html.escape(industry)} &nbsp;•&nbsp; {html.escape(website)} &nbsp;•&nbsp; {html.escape(contact_name)}</div></div>
         <div class="lp-status">{status}</div></div>""",
         unsafe_allow_html=True,
     )
 
+    latest_run = lead.get('latest_run')
+    if latest_run and latest_run['status'] in ('pending', 'running'):
+        try:
+            run_analysis(lead_id, latest_run)
+            st.rerun()
+        except ApiError as error:
+            st.error(str(error))
+        return
+    if latest_run:
+        with st.container(border=True):
+            render_trace(latest_run)
     analyzed = bool(lead.get("research") or lead.get("fit_score"))
 
     if not analyzed:
@@ -830,7 +932,7 @@ def page_lead_detail():
         if st.button("🤖 Analyze this lead", type="primary"):
             with st.spinner("Running research, fit scoring, and outreach drafting... this can take a moment."):
                 try:
-                    api_post_json(f"/leads/{lead_id}/analyze", {})
+                    run_analysis(lead_id)
                     st.success("Analysis complete!")
                     st.rerun()
                 except ApiError as e:
@@ -842,21 +944,25 @@ def page_lead_detail():
         if st.button("✦ Regenerate AI analysis", use_container_width=True):
             with st.spinner("Refreshing research, fit score and outreach drafts..."):
                 try:
-                    api_post_json(f"/leads/{lead_id}/analyze", {})
+                    run_analysis(lead_id)
                     get_ai_health.clear()
                     st.success("AI analysis and drafts regenerated.")
                     st.rerun()
                 except ApiError as error:
                     st.error(f"AI generation failed: {error}")
     with action_right:
-        st.caption("Use Regenerate after correcting the Groq key or updating portfolio evidence.")
+        st.caption(
+            "Use Regenerate after correcting the Groq key or updating portfolio evidence.")
 
     summary_col, fit_col = st.columns([1.15, 1], gap="large")
     with summary_col:
         with st.container(border=True):
-            st.markdown('<div class="lp-section-title">🏢 Company research</div>', unsafe_allow_html=True)
-            st.markdown('<div class="lp-section-copy">What the research agent learned about this prospect.</div>', unsafe_allow_html=True)
-            st.write(lead.get("company_summary") or "No company summary was returned.")
+            st.markdown(
+                '<div class="lp-section-title">🏢 Company research</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="lp-section-copy">What the research agent learned about this prospect.</div>', unsafe_allow_html=True)
+            st.write(lead.get("company_summary")
+                     or "No company summary was returned.")
             sources = lead.get("evidence_sources") or []
             if sources:
                 st.markdown("**Research sources**")
@@ -865,22 +971,27 @@ def page_lead_detail():
 
     with fit_col:
         with st.container(border=True):
-            st.markdown('<div class="lp-section-title">🎯 Fit assessment</div>', unsafe_allow_html=True)
-            st.markdown('<div class="lp-section-copy">How strongly this prospect matches your experience.</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="lp-section-title">🎯 Fit assessment</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="lp-section-copy">How strongly this prospect matches your experience.</div>', unsafe_allow_html=True)
             fit_score = lead.get("fit_score") or "Unknown"
             confidence = lead.get("confidence")
             metric_col, confidence_col = st.columns(2)
-            metric_col.metric("Fit", FIT_SCORE_COLORS.get(fit_score, fit_score))
+            metric_col.metric(
+                "Fit", FIT_SCORE_COLORS.get(fit_score, fit_score))
             confidence_text = f"{round(float(confidence) * 100)}%" if confidence is not None else "—"
             confidence_col.metric("Confidence", confidence_text)
-            st.write(lead.get("fit_explanation") or "No fit explanation was returned.")
+            st.write(lead.get("fit_explanation")
+                     or "No fit explanation was returned.")
             matching_skills = lead.get("matching_skills") or []
             if matching_skills:
                 st.markdown("**Matching skills**")
                 st.write(" • ".join(matching_skills))
 
     with st.container(border=True):
-        st.markdown('<div class="lp-section-title">📎 Portfolio evidence</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="lp-section-title">📎 Portfolio evidence</div>', unsafe_allow_html=True)
         st.markdown('<div class="lp-section-copy">Actual portfolio excerpts used by the AI to score and personalize this lead.</div>', unsafe_allow_html=True)
         evidence = lead.get("portfolio_evidence") or []
         if evidence:
@@ -888,31 +999,57 @@ def page_lead_detail():
                 with st.expander(f"Evidence {index}", expanded=False):
                     st.write(item)
         else:
-            st.info("No portfolio evidence was found. Upload a portfolio, then analyze this lead again.")
+            st.info(
+                "No portfolio evidence was found. Upload a portfolio, then analyze this lead again.")
 
     with st.container(border=True):
-        st.markdown('<div class="lp-section-title">✉️ Outreach workspace</div>', unsafe_allow_html=True)
-        st.markdown('<div class="lp-section-copy">Review and edit both drafts before making your decision.</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="lp-section-title">✉️ Outreach workspace</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="lp-section-copy">Review and edit both drafts before making your decision.</div>', unsafe_allow_html=True)
         email_tab, linkedin_tab = st.tabs(["📧 Email", "💼 LinkedIn"])
         with email_tab:
+            st.text_input("Email subject", value=lead.get(
+                'subject_line') or '', disabled=True)
             email_draft = st.text_area(
                 "Email draft", value=lead.get("email_draft") or "", height=240,
-                help="Edit this message before approval if needed.", key=f"email_{lead_id}",
+                help="Edit this message before approval if needed.", key=f"email_{lead_id}_{latest_run['id'] if latest_run else 'legacy'}",
             )
         with linkedin_tab:
             linkedin_draft = st.text_area(
                 "LinkedIn message draft", value=lead.get("linkedin_draft") or "", height=180,
-                help="Edit this message before approval if needed.", key=f"linkedin_{lead_id}",
+                help="Edit this message before approval if needed.", key=f"linkedin_{lead_id}_{latest_run['id'] if latest_run else 'legacy'}",
             )
 
+    if latest_run and latest_run.get('report', {}).get('evidence_used'):
+        with st.expander('Evidence used in both messages', expanded=True):
+            for claim in latest_run['report']['evidence_used']:
+                st.write(f"{claim['evidence_id']}: {claim['quote']}")
+            st.write(latest_run['report'].get('evidence_summary', ''))
+
     with st.container(border=True):
-        st.markdown('<div class="lp-section-title">✅ Final decision</div>', unsafe_allow_html=True)
-        st.markdown('<div class="lp-section-copy">Nothing is sent automatically. You remain in control.</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="lp-section-title">✅ Final decision</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="lp-section-copy">Nothing is sent automatically. You remain in control.</div>', unsafe_allow_html=True)
+        can_approve = bool(latest_run and latest_run.get('validation', {}).get('passed')
+                           and latest_run.get('status') == 'completed')
+        can_fix = bool(latest_run and latest_run.get('status') == 'needs_review'
+                       and lead.get('email_draft'))
+        if can_fix:
+            st.warning('The AI drafts did not pass validation. Fix them above (see "Validation checks '
+                       'and rewrite history" for exact issues) and choose **Edit** - your edited version '
+                       'is re-validated and approved if it passes. Or click Regenerate.')
+        elif not can_approve:
+            st.warning(
+                'Run analysis and pass validation before approving outreach.')
+        options = ["Approve", "Edit", "Reject"] if can_approve else (["Edit", "Reject"] if can_fix else ["Reject"])
         decision = st.radio(
-            "Decision", options=["Approve", "Edit", "Reject"], horizontal=True,
+            "Decision", options=options, horizontal=True,
             help="Approve the drafts, save your edits, or reject the outreach.",
         )
-        notes = st.text_area("Review notes (optional)", placeholder="Add context for your team...", key=f"notes_{lead_id}")
+        notes = st.text_area("Review notes (optional)",
+                             placeholder="Add context for your team...", key=f"notes_{lead_id}")
 
         if st.button("Save Decision", type="primary", use_container_width=True):
             with st.spinner("Saving your decision..."):
@@ -927,7 +1064,8 @@ def page_lead_detail():
                             "notes": notes,
                         },
                     )
-                    st.success(f"✅ Decision '{decision}' saved for {company_name}.")
+                    st.success(
+                        f"✅ Decision '{decision}' saved for {company_name}.")
                 except ApiError as e:
                     st.error(f"⚠️ Could not save decision: {e}")
 
@@ -940,6 +1078,14 @@ def main():
         backend_online = api_get("/").get("status") == "ok"
     except (ApiError, AttributeError):
         backend_online = False
+    st.session_state.setdefault('sender_name', os.getenv('SENDER_NAME', ''))
+    st.session_state.setdefault('sender_company', os.getenv('SENDER_COMPANY', ''))
+    with st.sidebar.expander('Outreach sender', expanded=True):
+        st.text_input('Your real name', key='sender_name')
+        st.text_input('Your company / professional identity',
+                      key='sender_company')
+        st.caption(
+            'Used in both messages. Required unless configured on the server.')
     connection_label = "● Backend connected" if backend_online else "● Backend offline"
     st.sidebar.markdown(
         f"""<div class="lp-brand">
@@ -957,9 +1103,11 @@ def main():
         try:
             ai_health = get_ai_health()
             if ai_health.get("status") == "ok":
-                st.sidebar.success(f"✦ AI ready · {ai_health.get('model', 'Groq')}")
+                st.sidebar.success(
+                    f"✦ AI ready · {ai_health.get('model', 'Groq')}")
             else:
-                st.sidebar.error(f"AI unavailable: {ai_health.get('message', 'Check backend/.env')}")
+                st.sidebar.error(
+                    f"AI unavailable: {ai_health.get('message', 'Check backend/.env')}")
         except ApiError as error:
             st.sidebar.error(f"AI check failed: {error}")
 

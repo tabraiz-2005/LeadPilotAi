@@ -32,6 +32,17 @@ def ensure_backend() -> str:
     if _backend_is_running():
         return "connected"
 
+    # Load configured values before defaults; hosting environment takes precedence.
+    from dotenv import load_dotenv
+    load_dotenv(BACKEND_DIR / ".env", override=False)
+    try:
+        for key in ("GROQ_API_KEY", "GROQ_MODEL", "DATABASE_URL", "CHROMA_PERSIST_DIR",
+                    "SENDER_NAME", "SENDER_COMPANY", "ENABLE_WEB_ENRICHMENT"):
+            if key in st.secrets:
+                os.environ.setdefault(key, str(st.secrets[key]))
+    except FileNotFoundError:
+        pass
+
     os.environ.setdefault("DATABASE_URL", "sqlite:////tmp/leadpilot.db")
     os.environ.setdefault("CHROMA_PERSIST_DIR", "/tmp/leadpilot-chroma")
     os.environ.setdefault("ALLOW_ORIGINS", "*")

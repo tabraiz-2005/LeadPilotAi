@@ -55,6 +55,16 @@ class Lead(Base):
     outreach_draft = relationship("OutreachDraft", back_populates="lead", uselist=False)
     approval = relationship("Approval", back_populates="lead", uselist=False)
 
+    runs = relationship("AgentRun", order_by="desc(AgentRun.created_at)")
+
+    @property
+    def latest_run(self):
+        return self.runs[0].as_dict() if self.runs else None
+
+    @property
+    def subject_line(self):
+        return self.outreach_draft.subject_line if self.outreach_draft else None
+
     @property
     def email_draft(self):
         return self.outreach_draft.message_body if self.outreach_draft else None
@@ -99,3 +109,26 @@ class Approval(Base):
     decided_at = Column(DateTime, default=datetime.utcnow)
 
     lead = relationship("Lead", back_populates="approval")
+
+
+class AgentRun(Base):
+    """Additive table: existing deployed leads/drafts need no ALTER migration."""
+    __tablename__ = "agent_runs"
+    id = Column(String, primary_key=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False, index=True)
+    status = Column(String, default="pending")
+    current_agent = Column(String, nullable=True)
+    steps = Column(JSON, default=list)
+    evidence = Column(JSON, default=list)
+    validation = Column(JSON, default=dict)
+    report = Column(JSON, default=dict)
+    sender = Column(JSON, default=dict)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    def as_dict(self):
+        return {key: getattr(self, key) for key in (
+            "id", "lead_id", "status", "current_agent", "steps", "evidence",
+            "validation", "report", "sender", "error"
+        )}

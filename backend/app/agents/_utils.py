@@ -7,8 +7,7 @@ Flow for every agent call:
     2. Try to parse + validate the response against `schema_cls`.
     3. If that fails (bad JSON or failed validation), retry once with an
        extra, stricter instruction appended to the conversation.
-    4. If the retry also fails, return the caller-supplied `fallback`
-       (already a valid instance of `schema_cls`) instead of raising.
+    4. If the retry also fails, raise a visible workflow error.
 
 This keeps every agent's own module focused on its prompt/business logic
 rather than on JSON/retry plumbing.
@@ -61,8 +60,8 @@ def run_json_agent(
     """
     Call the LLM and return a validated `schema_cls` instance.
 
-    Retries once with a stricter prompt on JSON/validation failure (or on
-    any transport error from the model call), then returns `fallback`.
+    Retries once on JSON/schema failure; raises after exhaustion.
+    The fallback parameter is retained for compatibility, never returned.
     """
     messages = [
         {"role": "system", "content": system_prompt},
@@ -92,5 +91,5 @@ def run_json_agent(
         logger.exception("%s: Groq retry failed: %s", schema_cls.__name__, exc)
         raise RuntimeError(str(exc)) from exc
 
-    logger.error("%s: falling back to schema-valid default output.", schema_cls.__name__)
-    return fallback
+    logger.error("%s: structured output validation exhausted.", schema_cls.__name__)
+    raise RuntimeError(f"{schema_cls.__name__}: model returned invalid structured output twice. Retry analysis.")

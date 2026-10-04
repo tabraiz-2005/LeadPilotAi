@@ -53,8 +53,7 @@ def run_research_agent(
 
     Returns:
         A validated ResearchOutput. If the model fails to produce valid
-        JSON after one retry, a schema-valid fallback is returned instead
-        of raising.
+        JSON after one retry, a visible workflow error is raised.
     """
     user_prompt = (
         "lead_csv_row:\n"

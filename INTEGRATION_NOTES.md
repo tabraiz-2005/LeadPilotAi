@@ -1,28 +1,11 @@
-# Integration Notes
+# Integration contract — supervisor update
 
-| Area | Submission mismatch | Integrated decision |
-|---|---|---|
-| Portfolio upload | Frontend sent multiple `files`; backend accepted one `file` | Accept multiple files and return `ingested_count` |
-| Lead upload | Frontend expected `lead_ids`; backend returned a list | Return `ingested_count` and `lead_ids` |
-| Fit score | Frontend expected High/Medium/Low; backend stored 0–100 | High/Medium/Low plus confidence |
-| Lead detail | Frontend expected research, evidence, explanation, and drafts | Persist and return all fields |
-| Agents | Agent imports and backend stubs differed | Real agents live in `backend/app/agents` |
-| Groq | Agent expected `get_completion`; backend exposed `call_groq` | Support both interfaces |
-| RAG | Separate RAG was not routed | Connect parsing/indexing to upload and retrieval to analysis |
-| Approval | Frontend sent approve/edit/reject; backend allowed approved/rejected | Normalize decisions and save edits |
-| Docker | Frontend was disabled | Start both services |
+`POST /leads/{id}/analyze` accepts optional `sender_name` and `sender_company` fields (server settings are fallback). It returns HTTP 202 with a persisted run ID and immediately schedules the supervisor. A second request for the same active lead returns its existing run.
 
-## Ownership after integration
+Poll `GET /leads/{id}/runs/{run_id}` for run status, current agent, steps, evidence, validation and final report. Run statuses: pending, running, completed, needs_review, failed. Step statuses: pending, running, completed, failed. An intentionally omitted outreach step is completed with an explanatory output and attempt 0. A validation failure is visible during the rewrite, then the final attempt replaces its stage status; all validation attempts remain available.
 
-| Owner | Area | Immediate responsibility |
-|---|---|---|
-| Person 1 | Integration/backend | API contracts, merges, database |
-| Person 2 | RAG | Retrieval quality and evidence |
-| Person 3 | Agents | Prompts, JSON, hallucination checks |
-| Person 4 | Frontend | UX and API communication |
-| Person 5 | QA/data | End-to-end and failure tests |
-| Person 6 | Demo/product | Story, slides, rehearsal, backup video |
+`GET /leads/{id}` keeps existing lead/draft fields and adds `subject_line` and `latest_run`. The report includes fit score/reason, qualification decision, source-linked claims, and the final review outcome.
 
-Freeze new features until this works on every machine:
+Approvals require a completed validated run and a draft. Editing messages revalidates them before saving; failed edits do not overwrite approved content. Re-analysis clears prior approval and replaces the draft. Nothing is delivered to an email or LinkedIn service.
 
-`Portfolio → Lead CSV → Analyze → Evidence → Fit → Drafts → Edit/Approve/Reject`
+The new `agent_runs` table is additive. Existing schema remains compatible. Use a single backend worker; see UPDATE_GUIDE.md for storage and hosting constraints.

@@ -1,0 +1,30 @@
+Copy these paths into the existing repository; preserve your .git and deployed data.
+
+UPDATED .gitignore
+UPDATED INTEGRATION_NOTES.md
+UPDATED README.md
+NEW UPDATE_GUIDE.md
+UPDATED backend/.env.example
+UPDATED backend/app/agents/_utils.py
+UPDATED backend/app/agents/fit_scorer_agent.py
+UPDATED backend/app/agents/outreach_agent.py
+UPDATED backend/app/agents/research_agent.py
+NEW backend/app/agents/supervisor_agent.py
+NEW backend/app/agents/validation_agent.py
+UPDATED backend/app/config.py
+UPDATED backend/app/main.py
+UPDATED backend/app/models.py
+UPDATED backend/app/routers/approvals.py
+UPDATED backend/app/routers/leads.py
+UPDATED backend/app/schemas.py
+UPDATED backend/app/services/groq_client.py
+NEW backend/app/services/web_research.py
+NEW backend/tests/conftest.py
+NEW backend/tests/test_frontend.py
+UPDATED backend/tests/test_integration.py
+NEW backend/tests/test_live_progress.py
+NEW backend/tests/test_provider.py
+NEW backend/tests/test_validation.py
+UPDATED frontend/app.py
+UPDATED frontend/embedded_backend.py
+NEW CHANGED_FILES.txt

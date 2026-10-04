@@ -20,7 +20,7 @@ def call_groq(
     messages: list[dict],
     temperature: float = 0.7,
     model: str | None = None,
-    max_tokens: int = 700,
+    max_tokens: int = 2200,
 ) -> str:
     """
     Send a list of chat messages to Groq and return the assistant's reply text.
@@ -53,8 +53,14 @@ def call_groq(
     }
 
     with httpx.Client(timeout=45.0) as client:
-        for attempt in range(3):
-            response = client.post(GROQ_API_URL, headers=headers, json=payload)
+        for attempt in range(6):
+            try:
+                response = client.post(GROQ_API_URL, headers=headers, json=payload)
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise RuntimeError("AI provider could not be reached after 3 attempts. Please retry.") from exc
             if response.is_success:
                 break
 
@@ -63,16 +69,16 @@ def call_groq(
             except Exception:
                 message = response.text
 
-            if response.status_code == 429 and attempt < 2:
+            if response.status_code in (429, 500, 502, 503, 504) and attempt < 5:
                 retry_header = response.headers.get("retry-after", "")
                 match = re.search(r"try again in ([0-9.]+)s", message, flags=re.I)
                 retry_seconds = float(retry_header) if retry_header.replace(".", "", 1).isdigit() else None
                 if retry_seconds is None and match:
                     retry_seconds = float(match.group(1))
-                time.sleep(min(max((retry_seconds or 8.0) + 1.0, 2.0), 20.0))
+                time.sleep(min(max((retry_seconds or 8.0) + 1.0, 2.0), 60.0))
                 continue
 
-            raise RuntimeError(f"Groq API error {response.status_code}: {message[:500]}")
+            raise RuntimeError(f"AI provider returned HTTP {response.status_code}. Check provider availability, API key and quota, then retry.")
         else:
             raise RuntimeError("Groq rate limit remained active after automatic retries.")
 

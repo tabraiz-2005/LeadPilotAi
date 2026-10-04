@@ -9,3 +9,7 @@ backend/data/chroma/
 backend/data/portfolio_uploads/*
 !backend/data/portfolio_uploads/.gitkeep
 backend/.env
+
+**/.streamlit/secrets.toml
+data/chroma/
+data/portfolio_uploads/

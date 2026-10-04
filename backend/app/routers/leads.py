@@ -4,13 +4,14 @@ import io
 import re
 import pandas as pd
 import httpx
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
-from app.models import Lead, OutreachDraft, PortfolioItem, Approval
-from app.schemas import LeadOut, LeadUploadResult, OutreachDraftOut
-from app.agents import run_research_agent, run_fit_scorer_agent, run_outreach_agent
+from app.models import Lead, OutreachDraft, PortfolioItem, Approval, AgentRun
+from app.schemas import LeadOut, LeadUploadResult, AnalyzeRequest
+from app.agents.supervisor_agent import execute_run, initial_steps
+from uuid import uuid4
 from app.services.rag_service import query_portfolio, format_evidence_for_agent
 
 router = APIRouter()
@@ -18,22 +19,6 @@ router = APIRouter()
 
 def clean(value):
     return None if pd.isna(value) or value == "" else str(value).strip()
-
-
-def fetch_public_excerpt(url: str | None) -> str:
-    """Optional homepage enrichment. CSV data remains the reliable fallback."""
-    if not settings.ENABLE_WEB_ENRICHMENT or not url:
-        return ""
-    if not url.startswith(("http://", "https://")):
-        url = "https://" + url
-    try:
-        response = httpx.get(url, timeout=5.0, follow_redirects=True, headers={"User-Agent": "LeadPilotAI/0.1"})
-        response.raise_for_status()
-        text = re.sub(r"<script.*?</script>|<style.*?</style>", " ", response.text, flags=re.I | re.S)
-        text = re.sub(r"<[^>]+>", " ", text)
-        return re.sub(r"\s+", " ", text).strip()[:6000]
-    except Exception:
-        return ""
 
 
 @router.post("/upload", response_model=LeadUploadResult)
@@ -70,6 +55,9 @@ def list_leads(db: Session = Depends(get_db)):
 def clear_all_leads(db: Session = Depends(get_db)):
     """Delete all leads and their related drafts and decisions."""
 
+    if db.query(AgentRun).filter(AgentRun.status.in_(['pending', 'running'])).first():
+        raise HTTPException(409, 'Wait for running analyses before clearing leads.')
+    db.query(AgentRun).delete(synchronize_session=False)
     approval_count = db.query(Approval).delete(synchronize_session=False)
     draft_count = db.query(OutreachDraft).delete(synchronize_session=False)
     lead_count = db.query(Lead).delete(synchronize_session=False)
@@ -92,43 +80,41 @@ def get_lead(lead_id: int, db: Session = Depends(get_db)):
     return lead
 
 
-@router.post("/{lead_id}/analyze", response_model=OutreachDraftOut)
-def analyze_lead(lead_id: int, db: Session = Depends(get_db)):
-    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+@router.post("/{lead_id}/analyze", status_code=202)
+def analyze_lead(lead_id: int, background: BackgroundTasks,
+                 payload: AnalyzeRequest = AnalyzeRequest(), db: Session = Depends(get_db)):
+    lead = db.get(Lead, lead_id)
     if not lead:
-        raise HTTPException(status_code=404, detail="Lead not found")
-    lead_row = {"company_name": lead.company_name, "website": lead.website, "industry": lead.industry,
-                "contact_name": lead.contact_name, "contact_email": lead.contact_email}
-    try:
-        research = run_research_agent(lead_row, fetch_public_excerpt(lead.website))
-        query = " ".join([lead.company_name, lead.industry or "", research.company_summary, *research.likely_needs])
-        matches = query_portfolio(query, top_k=2)
-        evidence_text = format_evidence_for_agent(matches)
-        portfolio_summary = "\n".join(
-            " ".join(item.content.split())[:700]
-            for item in db.query(PortfolioItem).limit(2).all()
-        )
-        fit = run_fit_scorer_agent(research, evidence_text, portfolio_summary)
-        outreach = run_outreach_agent(research, fit, evidence_text)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    lead.status, lead.fit_score, lead.confidence = "analyzed", fit.fit_score, fit.confidence
-    lead.company_summary, lead.fit_explanation = research.company_summary, fit.explanation
-    lead.matching_skills = fit.matching_skills
-    lead.portfolio_evidence = [
-        " ".join(str(match.get("document", "")).split())[:520]
-        for match in matches
-        if match.get("document")
-    ]
-    lead.evidence_sources = research.evidence_sources
-    draft = db.query(OutreachDraft).filter(OutreachDraft.lead_id == lead.id).first()
-    if not draft:
-        draft = OutreachDraft(lead_id=lead.id)
-        db.add(draft)
-    draft.research_notes = research.model_dump_json()
-    draft.subject_line = f"Idea for {lead.company_name}"
-    draft.message_body, draft.linkedin_message = outreach.email_draft, outreach.linkedin_draft
-    draft.rag_evidence_summary = outreach.rag_evidence_summary
+        raise HTTPException(404, "Lead not found")
+    active = db.query(AgentRun).filter(AgentRun.lead_id == lead_id,
+                                    AgentRun.status.in_(['pending', 'running'])).first()
+    if active:
+        return active.as_dict()
+    sender = {'name': payload.sender_name.strip() or settings.SENDER_NAME,
+              'company': payload.sender_company.strip() or settings.SENDER_COMPANY}
+    if not all(sender.values()):
+        raise HTTPException(422, 'Enter your real sender name and company in the sidebar before analysis.')
+    if not db.query(PortfolioItem).first():
+        raise HTTPException(422, 'Upload your portfolio before analyzing leads.')
+    if db.query(AgentRun).filter(AgentRun.status.in_(['pending', 'running'])).count() >= 20:
+        raise HTTPException(429, 'Analysis queue is full. Please retry shortly.')
+    claimed = db.query(Lead).filter(Lead.id == lead_id, Lead.status != 'analyzing').update(
+        {'status': 'analyzing'}, synchronize_session=False)
+    if not claimed:
+        db.rollback()
+        raise HTTPException(409, 'This lead is already being analyzed.')
+    run = AgentRun(id=uuid4().hex, lead_id=lead_id, status='pending',
+                   steps=initial_steps(), sender=sender)
+    db.add(run)
     db.commit()
-    db.refresh(draft)
-    return draft
+    db.refresh(run)
+    background.add_task(execute_run, run.id)
+    return run.as_dict()
+
+
+@router.get("/{lead_id}/runs/{run_id}")
+def get_run(lead_id: int, run_id: str, db: Session = Depends(get_db)):
+    run = db.get(AgentRun, run_id)
+    if not run or run.lead_id != lead_id:
+        raise HTTPException(404, 'Agent run not found')
+    return run.as_dict()

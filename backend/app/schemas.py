@@ -6,7 +6,7 @@ Naming convention used here:
   <Thing>Out     -> what the API sends back
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional, Literal
 
@@ -61,6 +61,8 @@ class LeadOut(BaseModel):
     evidence_sources: list[str] = []
     email_draft: Optional[str] = None
     linkedin_draft: Optional[str] = None
+    subject_line: Optional[str] = None
+    latest_run: Optional[dict] = None
     created_at: datetime
 
     class Config:
@@ -77,12 +79,30 @@ class ResearchOutput(BaseModel):
 
 class FitScoreOutput(BaseModel):
     fit_score: Literal["High", "Medium", "Low"]
-    confidence: float
+    confidence: float = Field(ge=0, le=1)
     explanation: str = ""
     matching_skills: list[str] = []
 
 
+class EvidenceClaim(BaseModel):
+    evidence_id: str
+    quote: str
+
+
+class ValidationOutput(BaseModel):
+    passed: bool = False
+    issues: list[str] = Field(default_factory=list)
+    checks: dict[str, bool] = Field(default_factory=dict)
+
+
+class AnalyzeRequest(BaseModel):
+    sender_name: str = Field(default="", max_length=120)
+    sender_company: str = Field(default="", max_length=160)
+
+
 class OutreachOutput(BaseModel):
+    subject_line: str = ""
+    evidence_used: list[EvidenceClaim] = Field(default_factory=list)
     email_draft: str = ""
     linkedin_draft: str = ""
     rag_evidence_summary: str = ""
