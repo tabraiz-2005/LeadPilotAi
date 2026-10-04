@@ -69,7 +69,7 @@ def check_groq_connection() -> dict:
         if not response.is_success:
             return {**base, "status": "error", "message": f"{_provider()} rejected the request: {response.text[:300]}"}
         ids = {item.get("id") for item in response.json().get("data", [])}
-        if settings.GROQ_MODEL not in ids:
+        if settings.GROQ_MODEL not in ids and _provider() != "OpenRouter":
             return {**base, "status": "error", "message": f"The configured model '{settings.GROQ_MODEL}' is not available."}
         return {**base, "status": "ok", "message": f"{_provider()} key and model are ready."}
     except Exception as exc:
