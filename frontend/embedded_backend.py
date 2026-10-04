@@ -36,7 +36,7 @@ def ensure_backend() -> str:
     from dotenv import load_dotenv
     load_dotenv(BACKEND_DIR / ".env", override=False)
     try:
-        for key in ("GROQ_API_KEY", "GROQ_MODEL", "DATABASE_URL", "CHROMA_PERSIST_DIR",
+        for key in ("GROQ_API_KEY", "GROQ_MODEL", "LLM_BASE_URL", "DATABASE_URL", "CHROMA_PERSIST_DIR",
                     "SENDER_NAME", "SENDER_COMPANY", "ENABLE_WEB_ENRICHMENT"):
             if key in st.secrets:
                 os.environ.setdefault(key, str(st.secrets[key]))

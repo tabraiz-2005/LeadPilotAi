@@ -20,6 +20,8 @@ class Settings:
     # Groq LLM settings
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "").strip().strip('"').strip("'")
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+    LLM_BASE_URL: str = (os.getenv("LLM_BASE_URL", "").strip().strip('"').strip("'")
+                         or "https://api.groq.com/openai/v1").rstrip("/")
 
     SENDER_NAME: str = os.getenv("SENDER_NAME", "").strip()
     SENDER_COMPANY: str = os.getenv("SENDER_COMPANY", "").strip()
